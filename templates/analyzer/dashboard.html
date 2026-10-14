@@ -1,0 +1,683 @@
+{% extends "analyzer/base.html" %}
+
+{% block title %}Dashboard | Regression Lab{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+    <h1 class="fw-bold">Linear Regression Dashboard</h1>
+    <p class="text-secondary">
+        Explore cost minimization, feature selection, learning rates
+        and prediction performance.
+    </p>
+</div>
+
+{% if message %}
+<div class="alert alert-success">{{ message }}</div>
+{% endif %}
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<!-- 1. Dataset Upload -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>1. Upload Dataset</h4>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="upload">
+
+            <label for="dataset" class="form-label">
+                CSV File
+            </label>
+
+            <input
+                type="file"
+                class="form-control mb-3"
+                id="dataset"
+                name="dataset"
+                accept=".csv"
+                required
+            >
+
+            <button type="submit" class="btn btn-primary">
+                Upload and Preview
+            </button>
+        </form>
+    </div>
+</div>
+
+{% if columns %}
+
+<!-- 2. Dataset Summary -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>2. Dataset Summary</h4>
+
+        <div class="row g-3 my-3">
+            <div class="col-md-6">
+                <div class="bg-light rounded p-3">
+                    <span class="text-secondary">Total Rows</span>
+                    <h3>{{ row_count }}</h3>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="bg-light rounded p-3">
+                    <span class="text-secondary">Total Columns</span>
+                    <h3>{{ column_count }}</h3>
+                </div>
+            </div>
+        </div>
+
+        <h5>Dataset Preview</h5>
+        <div class="table-responsive">{{ preview|safe }}</div>
+    </div>
+</div>
+
+<!-- 3. Individual Model Training -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>3. Configure Model Training</h4>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="train">
+
+            <div class="mb-3">
+                <label for="training_dataset" class="form-label">
+                    CSV File for Training
+                </label>
+
+                <input
+                    type="file"
+                    class="form-control"
+                    id="training_dataset"
+                    name="dataset"
+                    accept=".csv"
+                    required
+                >
+            </div>
+
+            <div class="mb-3">
+                <label for="target" class="form-label">
+                    Target Column
+                </label>
+
+                <select
+                    class="form-select"
+                    id="target"
+                    name="target"
+                    required
+                >
+                    <option value="">Choose target</option>
+
+                    {% for column in numeric_columns %}
+                    <option
+                        value="{{ column }}"
+                        {% if selected_target == column %}selected{% endif %}
+                    >
+                        {{ column }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Input Features</label>
+
+                {% for column in numeric_columns %}
+                <div class="form-check">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="features"
+                        value="{{ column }}"
+                        id="train_feature_{{ forloop.counter }}"
+                        {% if column in selected_features %}checked{% endif %}
+                        {% if column == selected_target %}disabled{% endif %}
+                    >
+
+                    <label
+                        class="form-check-label"
+                        for="train_feature_{{ forloop.counter }}"
+                    >
+                        {{ column }}
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label for="learning_rate" class="form-label">
+                        Learning Rate
+                    </label>
+
+                    <input
+                        type="number"
+                        class="form-control"
+                        id="learning_rate"
+                        name="learning_rate"
+                        value="0.01"
+                        min="0.000001"
+                        max="1"
+                        step="any"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label for="iterations" class="form-label">
+                        Training Iterations
+                    </label>
+
+                    <input
+                        type="number"
+                        class="form-control"
+                        id="iterations"
+                        name="iterations"
+                        value="1000"
+                        min="1"
+                        max="10000"
+                        required
+                    >
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-success">
+                Train Linear Regression Model
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- 4. Feature Combination Comparison -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>4. Feature Combination Comparison</h4>
+
+        <p class="text-secondary">
+            Compare individual input features against all features together.
+        </p>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="compare">
+
+            <div class="mb-3">
+                <label for="compare_dataset" class="form-label">
+                    CSV File for Comparison
+                </label>
+
+                <input
+                    type="file"
+                    class="form-control"
+                    id="compare_dataset"
+                    name="dataset"
+                    accept=".csv"
+                    required
+                >
+            </div>
+
+            <div class="mb-3">
+                <label for="compare_target" class="form-label">
+                    Target Column
+                </label>
+
+                <select
+                    class="form-select"
+                    id="compare_target"
+                    name="target"
+                    required
+                >
+                    <option value="">Choose target</option>
+
+                    {% for column in numeric_columns %}
+                    <option
+                        value="{{ column }}"
+                        {% if selected_target == column %}selected{% endif %}
+                    >
+                        {{ column }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <label for="compare_rate" class="form-label">
+                        Learning Rate
+                    </label>
+
+                    <input
+                        type="number"
+                        class="form-control"
+                        id="compare_rate"
+                        name="learning_rate"
+                        value="0.01"
+                        min="0.000001"
+                        max="1"
+                        step="any"
+                        required
+                    >
+                </div>
+
+                <div class="col-md-6">
+                    <label for="compare_iterations" class="form-label">
+                        Iterations
+                    </label>
+
+                    <input
+                        type="number"
+                        class="form-control"
+                        id="compare_iterations"
+                        name="iterations"
+                        value="1000"
+                        min="1"
+                        max="10000"
+                        required
+                    >
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-outline-primary">
+                Compare Feature Sets
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- 5. Learning Rate Experiments -->
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>5. Learning Rate Experiments</h4>
+
+        <p class="text-secondary">
+            Compare learning rates 0.001, 0.01 and 0.1 using the same
+            training and test split. The experiment uses your selected
+            features and target.
+        </p>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="learning_rate">
+
+            <div class="mb-3">
+                <label for="lr_dataset" class="form-label">
+                    CSV File for Experiment
+                </label>
+
+                <input
+                    type="file"
+                    class="form-control"
+                    id="lr_dataset"
+                    name="dataset"
+                    accept=".csv"
+                    required
+                >
+            </div>
+
+            <div class="mb-3">
+                <label for="lr_target" class="form-label">
+                    Target Column
+                </label>
+
+                <select
+                    class="form-select"
+                    id="lr_target"
+                    name="target"
+                    required
+                >
+                    <option value="">Choose target</option>
+
+                    {% for column in numeric_columns %}
+                    <option
+                        value="{{ column }}"
+                        {% if selected_target == column %}selected{% endif %}
+                    >
+                        {{ column }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Input Features</label>
+
+                {% for column in numeric_columns %}
+                <div class="form-check">
+                    <input
+                        class="form-check-input"
+                        type="checkbox"
+                        name="features"
+                        value="{{ column }}"
+                        id="lr_feature_{{ forloop.counter }}"
+                        {% if column in learning_rate_features or column in selected_features %}checked{% endif %}
+                        {% if column == selected_target %}disabled{% endif %}
+                    >
+
+                    <label
+                        class="form-check-label"
+                        for="lr_feature_{{ forloop.counter }}"
+                    >
+                        {{ column }}
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="mb-3">
+                <label for="lr_iterations" class="form-label">
+                    Training Iterations
+                </label>
+
+                <input
+                    type="number"
+                    class="form-control"
+                    id="lr_iterations"
+                    name="iterations"
+                    value="1000"
+                    min="1"
+                    max="10000"
+                    required
+                >
+
+                <div class="form-text">
+                    Each learning rate will use the same iteration count.
+                </div>
+            </div>
+
+            <input
+                type="hidden"
+                name="learning_rate"
+                value="0.01"
+            >
+
+            <button type="submit" class="btn btn-outline-success">
+                Run Learning Rate Experiment
+            </button>
+        </form>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- 6. Individual Model Results -->
+{% if results %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>6. Model Evaluation Results</h4>
+
+        <p><strong>Target:</strong> {{ results.target }}</p>
+        <p><strong>Features:</strong> {{ results.features|join:", " }}</p>
+
+        <p>
+            <strong>Training Rows:</strong> {{ results.training_rows }}
+            &nbsp; | &nbsp;
+            <strong>Test Rows:</strong> {{ results.testing_rows }}
+        </p>
+
+        <div class="row g-3">
+            <div class="col-sm-6 col-lg-3">
+                <div class="bg-light rounded p-3">
+                    <span class="text-secondary">MAE</span>
+                    <h4>{{ results.mae|floatformat:4 }}</h4>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+                <div class="bg-light rounded p-3">
+                    <span class="text-secondary">Test MSE</span>
+                    <h4>{{ results.mse|floatformat:4 }}</h4>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+                <div class="bg-light rounded p-3">
+                    <span class="text-secondary">RMSE</span>
+                    <h4>{{ results.rmse|floatformat:4 }}</h4>
+                </div>
+            </div>
+
+            <div class="col-sm-6 col-lg-3">
+                <div class="bg-light rounded p-3">
+                    <span class="text-secondary">R² Score</span>
+                    <h4>
+                        {% if results.r2 != None %}
+                            {{ results.r2|floatformat:4 }}
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </h4>
+                </div>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="row g-3">
+            <div class="col-md-6">
+                <span class="text-secondary">Initial Training Cost</span>
+                <h5>{{ results.initial_cost|floatformat:4 }}</h5>
+            </div>
+
+            <div class="col-md-6">
+                <span class="text-secondary">Final Training Cost</span>
+                <h5>{{ results.final_cost|floatformat:4 }}</h5>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if cost_plot %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>Cost Function Behaviour</h4>
+
+        <p class="text-secondary">
+            Training MSE recorded during Gradient Descent.
+        </p>
+
+        <img
+            src="data:image/png;base64,{{ cost_plot }}"
+            alt="Cost function during training"
+            class="img-fluid rounded w-100"
+        >
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- 7. Feature Comparison Results -->
+{% if comparison_results %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>7. Feature Comparison Results</h4>
+
+        <p class="text-secondary">
+            Results are ranked by test RMSE, from lowest to highest.
+        </p>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>#</th>
+                        <th>Input Features</th>
+                        <th>MAE</th>
+                        <th>Test MSE</th>
+                        <th>RMSE</th>
+                        <th>R² Score</th>
+                        <th>Final Training Cost</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for result in comparison_results %}
+                    <tr>
+                        <td>{{ forloop.counter }}</td>
+                        <td>{{ result.feature_label }}</td>
+                        <td>{{ result.mae|floatformat:4 }}</td>
+                        <td>{{ result.mse|floatformat:4 }}</td>
+                        <td>{{ result.rmse|floatformat:4 }}</td>
+
+                        <td>
+                            {% if result.r2 != None %}
+                                {{ result.r2|floatformat:4 }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+
+                        <td>{{ result.final_cost|floatformat:4 }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="alert alert-info mb-0">
+            Lower test RMSE indicates smaller prediction errors
+            on this particular test split.
+        </div>
+    </div>
+</div>
+
+{% if comparison_plot %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>Cost Curves for Different Feature Sets</h4>
+
+        <p class="text-secondary">
+            Compare training cost across feature combinations.
+        </p>
+
+        <img
+            src="data:image/png;base64,{{ comparison_plot }}"
+            alt="Cost curves for feature combinations"
+            class="img-fluid rounded w-100"
+        >
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- 8. Learning Rate Experiment Results -->
+{% if learning_rate_results %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>8. Learning Rate Experiment Results</h4>
+
+        <p class="text-secondary">
+            Lower final training cost can indicate better optimization,
+            but also consider convergence status and test RMSE. A lower
+            training cost alone does not guarantee better predictions
+            on unseen data.
+        </p>
+
+        <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Learning Rate</th>
+                        <th>Initial Cost</th>
+                        <th>Final Cost</th>
+                        <th>Cost Reduction</th>
+                        <th>Reduction (%)</th>
+                        <th>Test RMSE</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for result in learning_rate_results %}
+                    <tr>
+                        <td>{{ result.learning_rate }}</td>
+
+                        <td>
+                            {% if result.initial_cost != None %}
+                                {{ result.initial_cost|floatformat:4 }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if result.final_cost != None %}
+                                {{ result.final_cost|floatformat:4 }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if result.cost_reduction != None %}
+                                {{ result.cost_reduction|floatformat:4 }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if result.cost_reduction_percent != None %}
+                                {{ result.cost_reduction_percent|floatformat:2 }}%
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            {% if result.test_rmse != None %}
+                                {{ result.test_rmse|floatformat:4 }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+
+                        <td>
+                            <span class="badge text-bg-{{ result.status_class }}">
+                                {{ result.status }}
+                            </span>
+
+                            {% if result.note %}
+                            <div class="small text-secondary mt-1">
+                                {{ result.note }}
+                            </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if learning_rate_plot %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-body p-4">
+        <h4>Cost Curves for Different Learning Rates</h4>
+
+        <p class="text-secondary">
+            The vertical axis uses a logarithmic scale to make curves
+            easier to compare. If a run diverges, only its finite
+            portion is drawn.
+        </p>
+
+        <img
+            src="data:image/png;base64,{{ learning_rate_plot }}"
+            alt="Cost curves for different learning rates"
+            class="img-fluid rounded w-100"
+        >
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="text-center text-secondary small py-3">
+    Regression Lab · Cost Function Behaviour in Linear Regression
+</div>
+
+{% endblock %}
